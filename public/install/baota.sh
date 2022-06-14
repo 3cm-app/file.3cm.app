@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 
 NAME=baota
 LOG_SIZE=10m
@@ -33,7 +33,7 @@ if [ -d "$DATA_DIR" ]; then
 else
 	_log "Remember to press: \"ctrl+c\" after seeing the baota's default password"
 	volume_name=baota
-	docker run --rm -ti \
+	docker run --rm \
 		-v $volume_name:/www \
 		$IMAGE
 	_log "Initial container stopped, copy the volume to $DATA_DIR"
