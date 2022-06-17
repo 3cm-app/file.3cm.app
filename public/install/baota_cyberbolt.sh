@@ -34,7 +34,7 @@ else
 	volume_name=baota
 	docker run --rm -it \
 		-v $volume_name:/www \
-		$IMAGE
+		$IMAGE -port 8888 -username username -password password
 	_log "Initial container stopped, copy the volume to $DATA_DIR"
 	cp -r /var/lib/docker/volumes/$volume_name/_data $DATA_DIR
 	_log "Copied volume to $DATA_DIR"
