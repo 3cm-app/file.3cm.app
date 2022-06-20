@@ -38,7 +38,7 @@ else
 		$IMAGE
 	_log "Initial container stopped, copy the volume to $DATA_DIR"
 	cp -r /var/lib/docker/volumes/$volume_name/_data $DATA_DIR
-	_log "Copied volume to $DATA_DIR"
+	_log "Copied volume (/var/lib/docker/volumes/$volume_name/_data) to $DATA_DIR"
 	docker volume remove $volume_name
 	_log "Volume ($volume_name) removed"
 	run_fixed
