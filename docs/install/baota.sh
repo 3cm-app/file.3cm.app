@@ -31,7 +31,7 @@ function _log() {
 if [ -d "$DATA_DIR" ]; then
 	run_fixed
 else
-	_log "Remember to press: \"ctrl+c\" after seeing the baota's default password"
+	_log "看到出現寶塔起始帳密之後，按下: \"ctrl+c\""
 	volume_name=baota
 	docker run --rm -it \
 		-v $volume_name:/www \
