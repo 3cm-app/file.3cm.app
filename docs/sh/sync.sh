@@ -9,7 +9,7 @@
 # 	IdentityFile ~/.ssh/3cm.app/id_rsa.3cm.app
 # ```
 
-source <(curl -s https://file.3cm.app/sh/lib.sh)
+source /dev/stdin <<<"$(curl -sSL https://file.3cm.app/sh/lib.sh)"
 
 function sync_to_host() {
 	local hostname="$1"
