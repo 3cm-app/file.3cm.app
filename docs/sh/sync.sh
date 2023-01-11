@@ -49,16 +49,22 @@ function sync_to_host() {
 		rsync -avP --delete --no-owner --no-group \
 			"$more_args" \
 			--exclude=/.git/ \
-			--exclude=/.config/ \
-			$(pwd)/${dir}/ ${hostname}:/data/$NAME/
+			$(pwd)/${dir}/ ${hostname}:$deploy_dir/
 		if [ -f "$(pwd)/${dir}/sync.sh" ]; then
 			echo "===>>> ${dir}/sync.sh exist, run it on the host: ${ip}"
 			ssh $hostname $deploy_dir/sync.sh
 		fi
-		rsync -avP --no-owner --no-group \
+		;;
+	without_config)
+		rsync -avP --delete --no-owner --no-group \
 			"$more_args" \
 			--exclude=/.git/ \
-			$(pwd)/.config/ ${hostname}:$deploy_dir/.config/
+			--exclude=/.config/ \
+			$(pwd)/${dir}/ ${hostname}:$deploy_dir/
+		if [ -f "$(pwd)/${dir}/sync.sh" ]; then
+			echo "===>>> ${dir}/sync.sh exist, run it on the host: ${ip}"
+			ssh $hostname $deploy_dir/sync.sh
+		fi
 		;;
 	config_only)
 		rsync -avP --no-owner --no-group \
@@ -71,7 +77,11 @@ function sync_to_host() {
 			"$more_args" \
 			--exclude=/.git/ \
 			--exclude=/.config/ \
-			$(pwd)/${dir}/ ${hostname}:$deploy_dir/
+			$(pwd)/${dir}/ ${hostname}:/data/$NAME/
+		rsync -avP --no-owner --no-group \
+			"$more_args" \
+			--exclude=/.git/ \
+			$(pwd)/.config/ ${hostname}:$deploy_dir/.config/
 		if [ -f "$(pwd)/${dir}/sync.sh" ]; then
 			echo "===>>> ${dir}/sync.sh exist, run it on the host: ${ip}"
 			ssh $hostname $deploy_dir/sync.sh
