@@ -44,14 +44,6 @@ function sync_to_host() {
 	else
 		more_args='--rsync-path="sudo rsync"'
 	fi
-	rsync -avP --delete --no-owner --no-group \
-		"$more_args" \
-		--exclude=/.git/ \
-		$(pwd)/${dir}/ ${hostname}:$deploy_dir/
-	if [ -f "$(pwd)/${dir}/sync.sh" ]; then
-		echo "===>>> ${dir}/sync.sh exist, run it on the host: ${ip}"
-		ssh $hostname $deploy_dir/sync.sh
-	fi
 	case "$sync_mode" in
 	all)
 		rsync -avP --delete --no-owner --no-group \
