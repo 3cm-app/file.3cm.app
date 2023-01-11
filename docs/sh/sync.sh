@@ -13,8 +13,9 @@ source /dev/stdin <<<"$(curl -sSL https://file.3cm.app/sh/lib.sh)"
 
 function sync_to_host() {
 	local hostname="$1"
-	local deploy_dir=""
-	if [ "" == "$2" ]; then
+	local sync_mode="$2"
+	local deploy_dir="$3"
+	if [ "$deploy_dir" == "" ]; then
 		deploy_dir="/data/deploy"
 	fi
 	local dir
@@ -29,7 +30,12 @@ function sync_to_host() {
 		dir=$(ls -d *$ip\_$port*)
 	fi
 	if [ "$dir" = "" ]; then
-		die "===>>> the dir of $hostname not found."
+		# try find by hostname
+		dir=$(ls -d *$hostname*)
+		if [ "$dir" = "" ]; then
+			echo >&2 "===>>> the dir of $hostname (Hostname: $ip) not found"
+			exit 2
+		fi
 	fi
 	local user=$(ssh -G $hostname | awk '/^user / { print $2 }')
 	local more_args=""
@@ -46,4 +52,38 @@ function sync_to_host() {
 		echo "===>>> ${dir}/sync.sh exist, run it on the host: ${ip}"
 		ssh $hostname $deploy_dir/sync.sh
 	fi
+	case "$sync_mode" in
+	all)
+		rsync -avP --delete --no-owner --no-group \
+			"$more_args" \
+			--exclude=/.git/ \
+			--exclude=/.config/ \
+			$(pwd)/${dir}/ ${hostname}:/data/$NAME/
+		if [ -f "$(pwd)/${dir}/sync.sh" ]; then
+			echo "===>>> ${dir}/sync.sh exist, run it on the host: ${ip}"
+			ssh $hostname $deploy_dir/sync.sh
+		fi
+		rsync -avP --no-owner --no-group \
+			"$more_args" \
+			--exclude=/.git/ \
+			$(pwd)/.config/ ${hostname}:$deploy_dir/.config/
+		;;
+	config_only)
+		rsync -avP --no-owner --no-group \
+			"$more_args" \
+			--exclude=/.git/ \
+			$(pwd)/.config/ ${hostname}:$deploy_dir/.config/
+		;;
+	*)
+		rsync -avP --delete --no-owner --no-group \
+			"$more_args" \
+			--exclude=/.git/ \
+			--exclude=/.config/ \
+			$(pwd)/${dir}/ ${hostname}:$deploy_dir/
+		if [ -f "$(pwd)/${dir}/sync.sh" ]; then
+			echo "===>>> ${dir}/sync.sh exist, run it on the host: ${ip}"
+			ssh $hostname $deploy_dir/sync.sh
+		fi
+		;;
+	esac
 }
