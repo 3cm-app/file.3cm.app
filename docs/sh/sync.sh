@@ -46,7 +46,7 @@ function sync_to_host() {
 	fi
 	case "$sync_mode" in
 	all)
-		rsync -avP --delete --no-owner --no-group \
+		rsync -avP --delete --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \
 			$(pwd)/${dir}/ ${hostname}:$deploy_dir/
@@ -56,7 +56,7 @@ function sync_to_host() {
 		fi
 		;;
 	without_config)
-		rsync -avP --delete --no-owner --no-group \
+		rsync -avP --delete --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \
 			--exclude=/.config/ \
@@ -67,18 +67,18 @@ function sync_to_host() {
 		fi
 		;;
 	config_only)
-		rsync -avP --no-owner --no-group \
+		rsync -avP --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \
 			$(pwd)/.config/ ${hostname}:$deploy_dir/.config/
 		;;
 	*)
-		rsync -avP --delete --no-owner --no-group \
+		rsync -avP --delete --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \
 			--exclude=/.config/ \
 			$(pwd)/${dir}/ ${hostname}:/data/$NAME/
-		rsync -avP --no-owner --no-group \
+		rsync -avP --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \
 			$(pwd)/.config/ ${hostname}:$deploy_dir/.config/
