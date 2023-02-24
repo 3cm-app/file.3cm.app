@@ -14,25 +14,29 @@ source /dev/stdin <<<"$(curl -sSL https://file.3cm.app/sh/lib.sh)"
 function sync_to_host() {
 	local hostname="$1"
 	local sync_mode="$2"
-	local deploy_dir="$3"
-	if [ "$deploy_dir" == "" ]; then
-		deploy_dir="/data/deploy"
+	local source_base_dir="$3"
+	if [[ -z "$source_base_dir" ]]; then
+		source_base_dir="$(pwd)/"
 	fi
-	local dir
+	local target_dir="$4"
+	if [ -z "$target_dir" ]; then
+		target_dir="/data/deploy"
+	fi
+	local source_dir
 	local ip=$(ssh -G $hostname | awk '/^hostname / { print $2 }')
 	if [ "$?" != "0" ]; then
 		die "===>>> $hostname not found."
 	fi
 	local port=$(ssh -G $hostname | awk '/^port / { print $2 }')
 	if [ "$port" = "22" ]; then
-		dir=$(ls -d *$ip*)
+		source_dir=$(ls -d *$source_base_dir$ip*)
 	else
-		dir=$(ls -d *$ip\_$port*)
+		source_dir=$(ls -d *$source_base_dir$ip\_$port*)
 	fi
-	if [ "$dir" = "" ]; then
+	if [ -z "$source_dir" ]; then
 		# try find by hostname
-		dir=$(ls -d *$hostname*)
-		if [ "$dir" = "" ]; then
+		source_dir=$(ls -d *$source_base_dir$hostname*)
+		if [ -z "$source_dir" ]; then
 			echo >&2 "===>>> the dir of $hostname (Hostname: $ip) not found"
 			exit 2
 		fi
@@ -49,10 +53,10 @@ function sync_to_host() {
 		rsync -avP --delete --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \
-			$(pwd)/${dir}/ ${hostname}:$deploy_dir/
+			${dir}/ ${hostname}:$target_dir/
 		if [ -f "$(pwd)/${dir}/sync.sh" ]; then
 			echo "===>>> ${dir}/sync.sh exist, run it on the host: ${ip}"
-			ssh $hostname $deploy_dir/sync.sh
+			ssh $hostname $target_dir/sync.sh
 		fi
 		;;
 	without_config)
@@ -60,42 +64,42 @@ function sync_to_host() {
 			"$more_args" \
 			--exclude=/.git/ \
 			--exclude=/.config/ \
-			$(pwd)/${dir}/ ${hostname}:$deploy_dir/
-		if [ -f "$(pwd)/${dir}/sync.sh" ]; then
-			echo "===>>> ${dir}/sync.sh exist, run it on the host: ${ip}"
-			ssh $hostname $deploy_dir/sync.sh
+			${source_dir}/ ${hostname}:$target_dir/
+		if [ -f "${source_dir}/sync.sh" ]; then
+			echo "===>>> ${source_dir}/sync.sh exist, run it on the host: ${ip}"
+			ssh $hostname $target_dir/sync.sh
 		fi
 		;;
 	config_only)
 		rsync -avP --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \
-			$(pwd)/.config/ ${hostname}:$deploy_dir/.config/
+			$source_dir/.config/ ${hostname}:$target_dir/.config/
 		;;
 	dry)
 		rsync -n -avP --delete --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \
 			--exclude=/.config/ \
-			$(pwd)/${dir}/ ${hostname}:$deploy_dir/
+			$source_dir/ ${hostname}:$target_dir/
 		rsync -n -avP --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \
-			$(pwd)/.config/ ${hostname}:$deploy_dir/.config/
+			$source_dir/.config/ ${hostname}:$target_dir/.config/
 		;;
 	*)
 		rsync -avP --delete --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \
 			--exclude=/.config/ \
-			$(pwd)/${dir}/ ${hostname}:$deploy_dir/
+			$source_dir/ ${hostname}:$target_dir/
 		rsync -avP --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \
-			$(pwd)/.config/ ${hostname}:$deploy_dir/.config/
-		if [ -f "$(pwd)/${dir}/sync.sh" ]; then
-			echo "===>>> ${dir}/sync.sh exist, run it on the host: ${ip}"
-			ssh $hostname $deploy_dir/sync.sh
+			$source_dir/.config/ ${hostname}:$target_dir/.config/
+		if [ -f "$source_dir/sync.sh" ]; then
+			echo "===>>> ${source_dir}/sync.sh exist, run it on the host: ${ip}"
+			ssh $hostname $target_dir/sync.sh
 		fi
 		;;
 	esac
