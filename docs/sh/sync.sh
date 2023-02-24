@@ -87,7 +87,7 @@ function sync_to_host() {
 			--exclude=/.git/ \
 			$source_dir/.config/ ${hostname}:$target_dir/.config/
 		;;
-	*)
+	default)
 		rsync -avP --delete --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \
@@ -101,6 +101,10 @@ function sync_to_host() {
 			echo "===>>> ${source_dir}/sync.sh exist, run it on the host: ${ip}"
 			ssh $hostname $target_dir/sync.sh
 		fi
+		;;
+	*)
+		die "must specify the sync_mode!"
+		exit 2
 		;;
 	esac
 }
