@@ -55,11 +55,11 @@ function sync_to_host() {
 		target_dir="/data/deploy"
 	fi
 	local delay_s="$5"
-	if [ -z "delay_s" ]; then
+	if [ -z "$delay_s" ]; then
 		delay_s=5
 	fi
 	local remote_f="$6"
-	if [ -z "remote_f" ]; then
+	if [ -z "$remote_f" ]; then
 		remote_f="sync.sh"
 	fi
 
