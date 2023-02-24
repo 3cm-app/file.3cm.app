@@ -11,7 +11,7 @@
 
 source /dev/stdin <<<"$(curl -sSL https://file.3cm.app/sh/lib.sh)"
 
-function run_remote_sync_file_if_exist() {
+function run_remote_file_if_exist() {
 	local f="$1"
 	local source_dir="$2"
 	local target_dir="$3"
@@ -96,11 +96,11 @@ function sync_to_host() {
 	all)
 		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
 		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args --delete-delay"
-		run_remote_sync_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
+		run_remote_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
 		;;
 	no_config)
 		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
-		run_remote_sync_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
+		run_remote_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
 		;;
 	config_only)
 		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
@@ -112,7 +112,7 @@ function sync_to_host() {
 	default)
 		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
 		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
-		run_remote_sync_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
+		run_remote_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
 		;;
 	*)
 		die "Must specify the sync_mode! (should be one of all, no_config, config_only, dry, default)"
