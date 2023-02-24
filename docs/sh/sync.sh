@@ -85,8 +85,9 @@ function sync_to_host() {
 		more_args='--rsync-path="sudo rsync"'
 	fi
 
-	echo "After 3 seconds, it'll start syncing $source_dir to $hostname:$target_dir"
-	sleep 3
+	local delay_s=5
+	echo "After $delay_s seconds, it'll start syncing $source_dir to $hostname:$target_dir (mode: $sync_mode)"
+	sleep $delay_s
 
 	case "$sync_mode" in
 	all)
@@ -111,7 +112,7 @@ function sync_to_host() {
 		run_remote_sync_file_if_exist sync.sh $source_dir $target_dir $hostname $ip
 		;;
 	*)
-		die "must specify the sync_mode!"
+		die "Must specify the sync_mode! (should be one of all, no_config, config_only, dry, default)"
 		;;
 	esac
 }
