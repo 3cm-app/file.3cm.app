@@ -66,13 +66,13 @@ function sync_to_host() {
 	fi
 	local port=$(ssh -G $hostname | awk '/^port / { print $2 }')
 	if [ "$port" = "22" ]; then
-		source_dir=$(ls -d $source_base_dir/$ip* || true)
+		source_dir=$(ls -d $source_base_dir/$ip*) || true
 	else
-		source_dir=$(ls -d $source_base_dir/$ip\_$port* || true)
+		source_dir=$(ls -d $source_base_dir/$ip\_$port*) || true
 	fi
 	if [ -z "$source_dir" ]; then
 		# try find by hostname
-		source_dir=$(ls -d $source_base_dir/*$hostname* || true)
+		source_dir=$(ls -d $source_base_dir/*$hostname*) || true
 		if [ -z "$source_dir" ]; then
 			die "===>>> the dir of $hostname (Hostname: $ip) not found"
 		fi
