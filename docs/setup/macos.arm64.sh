@@ -122,7 +122,7 @@ brew install --cask docker
 ################
 
 # brew install rclone
-
+brew install rsync # newer version (>3.1.0, mac mini default is 2.6.9) support --chown
 brew install --cask dropbox
 brew install --cask google-drive
 

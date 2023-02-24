@@ -72,12 +72,23 @@ function sync_to_host() {
 			--exclude=/.git/ \
 			$(pwd)/.config/ ${hostname}:$deploy_dir/.config/
 		;;
+	dry)
+		rsync -n -avP --delete --chown=root:root \
+			"$more_args" \
+			--exclude=/.git/ \
+			--exclude=/.config/ \
+			$(pwd)/${dir}/ ${hostname}:$deploy_dir/
+		rsync -n -avP --chown=root:root \
+			"$more_args" \
+			--exclude=/.git/ \
+			$(pwd)/.config/ ${hostname}:$deploy_dir/.config/
+		;;
 	*)
 		rsync -avP --delete --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \
 			--exclude=/.config/ \
-			$(pwd)/${dir}/ ${hostname}:/data/$NAME/
+			$(pwd)/${dir}/ ${hostname}:$deploy_dir/
 		rsync -avP --chown=root:root \
 			"$more_args" \
 			--exclude=/.git/ \

@@ -7,6 +7,7 @@ echo 'PermitRootLogin without-password' >>/etc/ssh/sshd_config
 
 service sshd restart
 
+mkdir -p ~/.ssh
 cat /home/ubuntu/.ssh/authorized_keys >~/.ssh/authorized_keys
 
 curl -fsSL https://get.docker.com -o get-docker.sh
