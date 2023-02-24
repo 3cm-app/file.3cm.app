@@ -54,7 +54,11 @@ function sync_to_host() {
 	if [ -z "$target_dir" ]; then
 		target_dir="/data/deploy"
 	fi
-	local remote_f="$5"
+	local delay_s="$5"
+	if [ -z "delay_s" ]; then
+		delay_s=5
+	fi
+	local remote_f="$6"
 	if [ -z "remote_f" ]; then
 		remote_f="sync.sh"
 	fi
@@ -85,7 +89,6 @@ function sync_to_host() {
 		more_args='--rsync-path="sudo rsync"'
 	fi
 
-	local delay_s=5
 	echo "After $delay_s seconds, it'll start syncing $source_dir to $hostname:$target_dir (mode: $sync_mode)"
 	sleep $delay_s
 
@@ -93,11 +96,11 @@ function sync_to_host() {
 	all)
 		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
 		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args --delete-delay"
-		run_remote_sync_file_if_exist sync.sh $source_dir $target_dir $hostname $ip
+		run_remote_sync_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
 		;;
 	no_config)
 		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
-		run_remote_sync_file_if_exist sync.sh $source_dir $target_dir $hostname $ip
+		run_remote_sync_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
 		;;
 	config_only)
 		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
@@ -109,7 +112,7 @@ function sync_to_host() {
 	default)
 		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
 		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
-		run_remote_sync_file_if_exist sync.sh $source_dir $target_dir $hostname $ip
+		run_remote_sync_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
 		;;
 	*)
 		die "Must specify the sync_mode! (should be one of all, no_config, config_only, dry, default)"
