@@ -11,6 +11,38 @@
 
 source /dev/stdin <<<"$(curl -sSL https://file.3cm.app/sh/lib.sh)"
 
+function run_remote_sync_file_if_exist() {
+	local f="$1"
+	local source_dir="$2"
+	local target_dir="$3"
+	local hostname="$4"
+	local ip="$5"
+	if [ -f "$source_dir/$f" ]; then
+		echo "===>>> ${source_dir}/$f exist, run it on the target host: ${ip}"
+		ssh $hostname $target_dir/$f
+	fi
+}
+function sync_script_to_host() {
+	local source_dir="$1"
+	local target_dir="$2"
+	local hostname="$3"
+	local more_args="$4"
+	rsync -avP --delete-delay --chown=root:root \
+		$more_args \
+		--exclude=/.git/ \
+		--exclude=/.config/ \
+		${source_dir}/ ${hostname}:$target_dir/
+}
+function sync_config_to_host() {
+	local source_dir="$1"
+	local target_dir="$2"
+	local hostname="$3"
+	local more_args="$4"
+	rsync -avP --chown=root:root \
+		$more_args \
+		--exclude=/.git/ \
+		$source_dir/.config/ ${hostname}:$target_dir/.config/
+}
 function sync_to_host() {
 	local hostname="$1"
 	local sync_mode="$2"
@@ -22,6 +54,11 @@ function sync_to_host() {
 	if [ -z "$target_dir" ]; then
 		target_dir="/data/deploy"
 	fi
+	local remote_f="$5"
+	if [ -z "remote_f" ]; then
+		remote_f="sync.sh"
+	fi
+
 	local source_dir
 	local ip=$(ssh -G $hostname | awk '/^hostname / { print $2 }')
 	if [ "$?" != "0" ]; then
@@ -47,61 +84,31 @@ function sync_to_host() {
 	else
 		more_args='--rsync-path="sudo rsync"'
 	fi
+
 	echo "After 3 seconds, it'll start syncing $source_dir to $hostname:$target_dir"
 	sleep 3
+
 	case "$sync_mode" in
 	all)
-		rsync -avP --delete --chown=root:root \
-			"$more_args" \
-			--exclude=/.git/ \
-			${dir}/ ${hostname}:$target_dir/
-		if [ -f "$(pwd)/${dir}/sync.sh" ]; then
-			echo "===>>> ${dir}/sync.sh exist, run it on the host: ${ip}"
-			ssh $hostname $target_dir/sync.sh
-		fi
+		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
+		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args --delete-delay"
+		run_remote_sync_file_if_exist sync.sh $source_dir $target_dir $hostname $ip
 		;;
-	without_config)
-		rsync -avP --delete --chown=root:root \
-			"$more_args" \
-			--exclude=/.git/ \
-			--exclude=/.config/ \
-			${source_dir}/ ${hostname}:$target_dir/
-		if [ -f "${source_dir}/sync.sh" ]; then
-			echo "===>>> ${source_dir}/sync.sh exist, run it on the host: ${ip}"
-			ssh $hostname $target_dir/sync.sh
-		fi
+	no_config)
+		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
+		run_remote_sync_file_if_exist sync.sh $source_dir $target_dir $hostname $ip
 		;;
 	config_only)
-		rsync -avP --chown=root:root \
-			"$more_args" \
-			--exclude=/.git/ \
-			$source_dir/.config/ ${hostname}:$target_dir/.config/
+		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
 		;;
 	dry)
-		rsync -n -avP --delete --chown=root:root \
-			"$more_args" \
-			--exclude=/.git/ \
-			--exclude=/.config/ \
-			$source_dir/ ${hostname}:$target_dir/
-		rsync -n -avP --chown=root:root \
-			"$more_args" \
-			--exclude=/.git/ \
-			$source_dir/.config/ ${hostname}:$target_dir/.config/
+		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args -n"
+		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args -n"
 		;;
 	default)
-		rsync -avP --delete --chown=root:root \
-			"$more_args" \
-			--exclude=/.git/ \
-			--exclude=/.config/ \
-			$source_dir/ ${hostname}:$target_dir/
-		rsync -avP --chown=root:root \
-			"$more_args" \
-			--exclude=/.git/ \
-			$source_dir/.config/ ${hostname}:$target_dir/.config/
-		if [ -f "$source_dir/sync.sh" ]; then
-			echo "===>>> ${source_dir}/sync.sh exist, run it on the host: ${ip}"
-			ssh $hostname $target_dir/sync.sh
-		fi
+		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
+		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
+		run_remote_sync_file_if_exist sync.sh $source_dir $target_dir $hostname $ip
 		;;
 	*)
 		die "must specify the sync_mode!"
