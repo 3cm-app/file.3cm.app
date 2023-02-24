@@ -16,7 +16,7 @@ function sync_to_host() {
 	local sync_mode="$2"
 	local source_base_dir="$3"
 	if [[ -z "$source_base_dir" ]]; then
-		source_base_dir="$(pwd)/"
+		source_base_dir="$(pwd)"
 	fi
 	local target_dir="$4"
 	if [ -z "$target_dir" ]; then
@@ -29,16 +29,15 @@ function sync_to_host() {
 	fi
 	local port=$(ssh -G $hostname | awk '/^port / { print $2 }')
 	if [ "$port" = "22" ]; then
-		source_dir=$(ls -d *$source_base_dir$ip*)
+		source_dir=$(ls -d $source_base_dir/$ip*)
 	else
-		source_dir=$(ls -d *$source_base_dir$ip\_$port*)
+		source_dir=$(ls -d $source_base_dir/$ip\_$port*)
 	fi
 	if [ -z "$source_dir" ]; then
 		# try find by hostname
-		source_dir=$(ls -d *$source_base_dir$hostname*)
+		source_dir=$(ls -d $source_base_dir/*$hostname*)
 		if [ -z "$source_dir" ]; then
-			echo >&2 "===>>> the dir of $hostname (Hostname: $ip) not found"
-			exit 2
+			die "===>>> the dir of $hostname (Hostname: $ip) not found"
 		fi
 	fi
 	local user=$(ssh -G $hostname | awk '/^user / { print $2 }')
@@ -48,6 +47,8 @@ function sync_to_host() {
 	else
 		more_args='--rsync-path="sudo rsync"'
 	fi
+	echo "After 3 seconds, it'll start syncing $source_dir to $hostname:$target_dir"
+	sleep 3
 	case "$sync_mode" in
 	all)
 		rsync -avP --delete --chown=root:root \
@@ -104,7 +105,6 @@ function sync_to_host() {
 		;;
 	*)
 		die "must specify the sync_mode!"
-		exit 2
 		;;
 	esac
 }
