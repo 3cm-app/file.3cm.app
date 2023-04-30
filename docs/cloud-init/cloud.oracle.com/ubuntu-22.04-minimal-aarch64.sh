@@ -15,10 +15,12 @@ sh get-docker.sh
 
 mkdir -p /data
 
-apt-get install --no-install-recommends \
-	rsync
+apt-get install --no-install-recommends -y \
+	rsync \
+	jq
 
 # default security group only open others ports than 80, so we have to do this manually first
+# see: https://stackoverflow.com/questions/54794217/opening-port-80-on-oracle-cloud-infrastructure-compute-node
 iptables -P INPUT ACCEPT
 iptables -P OUTPUT ACCEPT
 iptables -P FORWARD ACCEPT
