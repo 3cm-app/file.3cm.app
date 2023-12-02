@@ -32,7 +32,8 @@ defaults -currentHost write com.apple.screensaver idleTime 0
 defaults write com.apple.screensaver idleTime 0
 sudo defaults write /Library/Preferences/com.apple.screensaver loginWindowIdleTime 0
 
-brew install --cask splashtop-streamer
+# brew install --cask splashtop-streamer
+# brew install --cask parsec # see https://support.parsec.app/hc/en-us/articles/7992906039693-Access-Login-Screen-on-macOS
 
 #########
 # xcode #
@@ -230,6 +231,8 @@ brew install cmake
 #################
 
 # brew install python # v3
+brew install python@3.10 # node-gyp not support python3.11
+ln -s ./python3.10 /opt/homebrew/bin/python
 
 brew install ruby # override default old version, some apps need this, e.q. cocoapods
 # gem update --system
@@ -354,6 +357,7 @@ echo 'Do "open /Application/Android\ Studio/" once to download sdk'
 # brew install --cask dbeaver-community
 # brew install --cask mysqlworkbench
 brew install --cask azure-data-studio
+# brew install mysql-client # for lib
 
 ################
 # cli for saas #
@@ -376,7 +380,7 @@ brew install drone-cli
 ############
 
 brew install pstree
-brew install exa
+brew install lsd
 brew install procs
 brew install dust
 brew install tokei
