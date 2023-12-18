@@ -11,7 +11,7 @@
 
 source /dev/stdin <<<"$(curl -sSL https://file.3cm.app/sh/lib.sh)"
 
-function run_remote_file_if_exist() {
+function _run_remote_file_if_exist() {
 	local f="$1"
 	local source_dir="$2"
 	local target_dir="$3"
@@ -22,7 +22,7 @@ function run_remote_file_if_exist() {
 		ssh $hostname $target_dir/$f
 	fi
 }
-function sync_script_to_host() {
+function _sync_script_to_host() {
 	local source_dir="$1"
 	local target_dir="$2"
 	local hostname="$3"
@@ -33,7 +33,7 @@ function sync_script_to_host() {
 		--exclude=/.config/ \
 		${source_dir}/ ${hostname}:$target_dir/
 }
-function sync_config_to_host() {
+function _sync_config_to_host() {
 	local source_dir="$1"
 	local target_dir="$2"
 	local hostname="$3"
@@ -43,7 +43,7 @@ function sync_config_to_host() {
 		--exclude=/.git/ \
 		$source_dir/.config/ ${hostname}:$target_dir/.config/
 }
-function sync_to_host() {
+function _sync_to_host() {
 	local hostname="$1"
 	local sync_mode="$2"
 	local source_base_dir="$3"
@@ -64,19 +64,20 @@ function sync_to_host() {
 	fi
 
 	local source_dir
+	# try to find source folder by ip and port
 	local ip=$(ssh -G $hostname | awk '/^hostname / { print $2 }')
 	if [ "$?" != "0" ]; then
 		die "===>>> $hostname not found."
 	fi
 	local port=$(ssh -G $hostname | awk '/^port / { print $2 }')
 	if [ "$port" = "22" ]; then
-		source_dir=$(ls -d $source_base_dir/$ip*) || true
+		source_dir=$(ls -d -1 $source_base_dir/*$ip* | head -n 1) || true
 	else
-		source_dir=$(ls -d $source_base_dir/$ip\_$port*) || true
+		source_dir=$(ls -d -1 $source_base_dir/*$ip\_$port* | head -n 1) || true
 	fi
+	# try to find source folder by hostname
 	if [ -z "$source_dir" ]; then
-		# try find by hostname
-		source_dir=$(ls -d $source_base_dir/*$hostname*) || true
+		source_dir=$(ls -d -1 $source_base_dir/*$hostname* | head -n 1) || true
 		if [ -z "$source_dir" ]; then
 			die "===>>> the dir of $hostname (Hostname: $ip) not found"
 		fi
@@ -94,25 +95,25 @@ function sync_to_host() {
 
 	case "$sync_mode" in
 	all)
-		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
-		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args --delete-delay"
-		run_remote_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
+		_sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
+		_sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args --delete-delay"
+		_run_remote_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
 		;;
 	no_config)
-		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
-		run_remote_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
+		_sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
+		_run_remote_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
 		;;
 	config_only)
-		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
+		_sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
 		;;
 	dry)
-		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args -n"
-		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args -n"
+		_sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args -n"
+		_sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args -n"
 		;;
 	default)
-		sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
-		sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
-		run_remote_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
+		_sync_script_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
+		_sync_config_to_host "$source_dir" "$target_dir" "$hostname" "$more_args"
+		_run_remote_file_if_exist $remote_f $source_dir $target_dir $hostname $ip
 		;;
 	*)
 		die "Must specify the sync_mode! (should be one of all, no_config, config_only, dry, default)"
