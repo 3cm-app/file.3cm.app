@@ -14,6 +14,12 @@
 # from. On a dual-stack host that is only one of the two, so bind the other by
 # hand once: worker-admin.sh bind <ref> <the other address>
 #
+# Run as root and the CA is installed for the whole host, through
+# sshd_config.d + TrustedUserCAKeys. Run as anyone else and it goes into that
+# user's own ~/.ssh/authorized_keys as a cert-authority line instead, which
+# needs no privileges and no sshd reload -- the way to manage a shared host.
+# In that mode nothing is installed for you: missing tools are an error.
+#
 # Settings, highest priority first:
 #   1. environment variable
 #   2. config file      $CONFIG_FILE, JSON, keyed by the snake_case form of the
@@ -24,7 +30,16 @@ set -eu
 
 : "${__ID:=worker-keepalive}"
 : "${__VERSION:=2.0.0.20260816}"
-: "${CONFIG_FILE:=/etc/$__ID/config.json}"
+
+# Without root the agent cannot touch sshd at all, so it trusts the CA through
+# the user's own authorized_keys instead and keeps everything under $HOME.
+if [ "$(id -u)" = 0 ]; then
+	: "${USER_MODE:=0}"
+	: "${CONFIG_FILE:=/etc/$__ID/config.json}"
+else
+	: "${USER_MODE:=1}"
+	: "${CONFIG_FILE:=$HOME/.$__ID/config.json}"
+fi
 
 # JSON rather than a shell fragment: sourcing a config file would execute it.
 # Only listed keys are honored, assigned directly rather than through eval.
@@ -58,6 +73,7 @@ read_config() {
 		log_max_bytes) [ -n "${LOG_MAX_BYTES:-}" ] || LOG_MAX_BYTES=$v ;;
 		http_timeout) [ -n "${HTTP_TIMEOUT:-}" ] || HTTP_TIMEOUT=$v ;;
 		install_deps) [ -n "${INSTALL_DEPS:-}" ] || INSTALL_DEPS=$v ;;
+		authorized_keys) [ -n "${AUTHORIZED_KEYS:-}" ] || AUTHORIZED_KEYS=$v ;;
 		esac
 	done <<EOF
 $(jq -r 'to_entries[] | select(.value != null) | "\(.key)\t\(.value)"' "$CONFIG_FILE" 2>/dev/null)
@@ -75,11 +91,17 @@ read_config
 : "${CONFIG_DIR:=$(dirname "$CONFIG_FILE")}"
 : "${MACHINE_ID_FILE:=$CONFIG_DIR/machine-id}"
 : "${RELOAD_PENDING_FILE:=$CONFIG_DIR/ca-reload-pending}"
-: "${INSTALL_PATH:=/usr/local/sbin/$__ID.sh}"
 : "${CA_PUB:=$CONFIG_DIR/$__ID.pub}"
-: "${SSHD_CONFIG:=/etc/ssh/sshd_config}"
-: "${SSHD_DROPIN:=/etc/ssh/sshd_config.d/98-$__ID.conf}"
-: "${LOG_FILE:=/var/log/$__ID.log}"
+if [ "$USER_MODE" = 1 ]; then
+	: "${INSTALL_PATH:=$HOME/.local/bin/$__ID.sh}"
+	: "${LOG_FILE:=$CONFIG_DIR/$__ID.log}"
+	: "${AUTHORIZED_KEYS:=$HOME/.ssh/authorized_keys}"
+else
+	: "${INSTALL_PATH:=/usr/local/sbin/$__ID.sh}"
+	: "${LOG_FILE:=/var/log/$__ID.log}"
+	: "${SSHD_CONFIG:=/etc/ssh/sshd_config}"
+	: "${SSHD_DROPIN:=/etc/ssh/sshd_config.d/98-$__ID.conf}"
+fi
 
 # --- behavior ---------------------------------------------------------------
 : "${MARK_BEGIN:=# >>> $__ID CA >>>}"
@@ -111,8 +133,10 @@ die() {
 # Dependencies
 # ---------------------------------------------------------------------------
 
-require_root() {
-	[ "$(id -u)" = 0 ] || die "must run as root (needs to write /etc/ssh and reload sshd)"
+require_writable() {
+	if [ "$USER_MODE" = 1 ]; then
+		[ -n "${HOME:-}" ] && [ -w "$HOME" ] || die "HOME is unset or not writable; cannot run in user mode"
+	fi
 }
 
 detect_pkg_manager() {
@@ -190,6 +214,9 @@ ensure_deps() {
 	missing=$(missing_cmds "$wanted")
 	[ -z "$missing" ] && return 0
 
+	if [ "$USER_MODE" = 1 ]; then
+		die "missing command(s): $missing -- install them yourself, this agent has no root"
+	fi
 	if [ "$INSTALL_DEPS" != 1 ]; then
 		die "missing command(s): $missing (INSTALL_DEPS=0, not installing)"
 	fi
@@ -298,7 +325,51 @@ detect_os() {
 
 # Overwrites rather than appends: a host trusts exactly one CA. TrustedUserCAKeys
 # can list several, but that would let one fleet's controller into another's.
+# authorized_keys is shared with whatever else the account uses, so only the one
+# line carrying our marker is ever touched. sshd reads the file per
+# authentication, so nothing needs reloading.
+ensure_authorized_key() {
+	marker="managed-by=$__ID"
+	want="cert-authority $(cat "$CA_PUB") $marker"
+
+	mkdir -p "$(dirname "$AUTHORIZED_KEYS")"
+	chmod 700 "$(dirname "$AUTHORIZED_KEYS")" 2>/dev/null || true
+	[ -f "$AUTHORIZED_KEYS" ] || : >"$AUTHORIZED_KEYS"
+	chmod 600 "$AUTHORIZED_KEYS" 2>/dev/null || true
+
+	if grep -qxF "$want" "$AUTHORIZED_KEYS"; then
+		return 0
+	fi
+	tmp=$(mktemp)
+	TMP_FILES="$TMP_FILES $tmp"
+	grep -vF "$marker" "$AUTHORIZED_KEYS" >"$tmp" || true
+	printf '%s\n' "$want" >>"$tmp"
+	cat "$tmp" >"$AUTHORIZED_KEYS"
+	rm -f "$tmp"
+	log INFO "CA trust line written to $AUTHORIZED_KEYS"
+}
+
 ensure_ca() {
+	ca_problem=''
+	if [ ! -s "$CA_PUB" ]; then
+		ca_problem='missing or empty'
+	else
+		case "$(cat "$CA_PUB")" in
+		ssh-ed25519\ * | ssh-rsa\ * | ecdsa-sha2-*) ;;
+		*) ca_problem='not an SSH public key' ;;
+		esac
+	fi
+	if [ -n "$ca_problem" ]; then
+		log WARN "$CA_PUB is $ca_problem -- this host trusts no CA"
+		log WARN "write the CA public key to it, then re-run '$0 run'"
+		return 0
+	fi
+
+	if [ "$USER_MODE" = 1 ]; then
+		ensure_authorized_key
+		return 0
+	fi
+
 	want_line="TrustedUserCAKeys $CA_PUB"
 	changed=0
 
@@ -316,21 +387,6 @@ ensure_ca() {
 	sshd_ok_before=0
 	if sshd=$(sshd_bin); then
 		"$sshd" -t 2>/dev/null && sshd_ok_before=1
-	fi
-
-	ca_problem=''
-	if [ ! -s "$CA_PUB" ]; then
-		ca_problem='missing or empty'
-	else
-		case "$(cat "$CA_PUB")" in
-		ssh-ed25519\ * | ssh-rsa\ * | ecdsa-sha2-*) ;;
-		*) ca_problem='not an SSH public key' ;;
-		esac
-	fi
-	if [ -n "$ca_problem" ]; then
-		log WARN "$CA_PUB is $ca_problem -- this host trusts no CA"
-		log WARN "write the CA public key to it, then re-run '$0 run'"
-		return 0
 	fi
 
 	if grep -qE '^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d/' "$SSHD_CONFIG" 2>/dev/null; then
@@ -512,6 +568,10 @@ setup_autostart() {
 		return 0
 	fi
 
+	if [ "$USER_MODE" = 1 ]; then
+		die "crontab not found; this agent has no root to install a system timer"
+	fi
+
 	if has_systemd; then
 		cat >"/etc/systemd/system/$__ID.service" <<EOF
 [Unit]
@@ -549,7 +609,7 @@ remove_autostart() {
 		crontab "$tmp"
 		rm -f "$tmp"
 	fi
-	if has_systemd && [ -f "/etc/systemd/system/$__ID.timer" ]; then
+	if [ "$USER_MODE" != 1 ] && has_systemd && [ -f "/etc/systemd/system/$__ID.timer" ]; then
 		systemctl disable --now "$__ID.timer" >/dev/null 2>&1 || true
 		rm -f "/etc/systemd/system/$__ID.timer" "/etc/systemd/system/$__ID.service"
 		systemctl daemon-reload
@@ -569,7 +629,7 @@ trim_log() {
 # ---------------------------------------------------------------------------
 
 cmd_install() {
-	require_root
+	require_writable
 	ensure_deps
 
 	case "$API_BASE" in
@@ -628,7 +688,7 @@ cmd_install() {
 }
 
 cmd_run() {
-	require_root
+	require_writable
 	ensure_deps
 	require_installed
 	trim_log
@@ -639,6 +699,7 @@ cmd_run() {
 
 cmd_status() {
 	printf 'agent id:       %s\n' "$__ID"
+	printf 'mode:           %s\n' "$([ "$USER_MODE" = 1 ] && echo "user ($(id -un))" || echo root)"
 	printf 'version:        %s\n' "$__VERSION"
 	printf 'config:         %s\n' "$([ -r "$CONFIG_FILE" ] && echo "$CONFIG_FILE" || echo MISSING)"
 	printf 'api base:       %s\n' "$API_BASE"
@@ -648,19 +709,25 @@ cmd_status() {
 	if [ -f "$CA_PUB" ] && command -v ssh-keygen >/dev/null 2>&1; then
 		printf 'ca fingerprint: %s\n' "$(ssh-keygen -l -f "$CA_PUB" 2>/dev/null || echo unreadable)"
 	fi
-	if [ -f "$SSHD_DROPIN" ]; then
-		printf 'sshd config:    %s\n' "$SSHD_DROPIN"
+	if [ "$USER_MODE" = 1 ]; then
+		if grep -qF "managed-by=$__ID" "$AUTHORIZED_KEYS" 2>/dev/null; then
+			printf 'ca trust:       %s\n' "$AUTHORIZED_KEYS"
+		else
+			printf 'ca trust:       MISSING from %s\n' "$AUTHORIZED_KEYS"
+		fi
+	elif [ -f "$SSHD_DROPIN" ]; then
+		printf 'ca trust:       %s\n' "$SSHD_DROPIN"
 	elif grep -qF "$MARK_BEGIN" "$SSHD_CONFIG" 2>/dev/null; then
-		printf 'sshd config:    managed block in %s\n' "$SSHD_CONFIG"
+		printf 'ca trust:       managed block in %s\n' "$SSHD_CONFIG"
 	else
-		printf 'sshd config:    MISSING\n'
+		printf 'ca trust:       MISSING\n'
 	fi
 	# grep -c prints 0 and exits non-zero on no match, so `|| true` is enough
 	cron_count=$(crontab -l 2>/dev/null | grep -cF "$INSTALL_PATH" || true)
 	[ -n "$cron_count" ] || cron_count=0
 	# What is in effect, not what exists on disk: a leftover unit file on a host
 	# without systemd is a trap when debugging "why isn't this scheduled".
-	if [ ! -f "/etc/systemd/system/$__ID.timer" ]; then
+	if [ "$USER_MODE" = 1 ] || [ ! -f "/etc/systemd/system/$__ID.timer" ]; then
 		timer_state='no timer'
 	elif ! has_systemd; then
 		timer_state='timer file present but systemd is not running'
@@ -673,9 +740,24 @@ cmd_status() {
 }
 
 cmd_uninstall() {
-	require_root
+	require_writable
 	remove_autostart
-	rm -f "$SSHD_DROPIN" "$INSTALL_PATH"
+	rm -f "$INSTALL_PATH"
+
+	if [ "$USER_MODE" = 1 ]; then
+		if [ -f "$AUTHORIZED_KEYS" ]; then
+			tmp=$(mktemp)
+			TMP_FILES="$TMP_FILES $tmp"
+			grep -vF "managed-by=$__ID" "$AUTHORIZED_KEYS" >"$tmp" || true
+			cat "$tmp" >"$AUTHORIZED_KEYS"
+			rm -f "$tmp"
+			log INFO "CA trust line removed from $AUTHORIZED_KEYS"
+		fi
+		log INFO "uninstalled. $CONFIG_DIR was kept; remove it once you are sure"
+		return 0
+	fi
+
+	rm -f "$SSHD_DROPIN"
 	if grep -qF "$MARK_BEGIN" "$SSHD_CONFIG" 2>/dev/null; then
 		tmp=$(mktemp)
 		TMP_FILES="$TMP_FILES $tmp"
