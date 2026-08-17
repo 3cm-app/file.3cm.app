@@ -29,7 +29,7 @@
 set -eu
 
 : "${__ID:=worker-keepalive}"
-: "${__VERSION:=2.0.0.20260816}"
+: "${__VERSION:=2.0.0.20260817}"
 
 # Without root the agent cannot touch sshd at all, so it trusts the CA through
 # the user's own authorized_keys instead and keeps everything under $HOME.
@@ -554,12 +554,16 @@ heartbeat() {
 # ---------------------------------------------------------------------------
 
 setup_autostart() {
-	if command -v logger >/dev/null 2>&1; then
+	# Without root, syslog is typically write-only: the entries land somewhere
+	# the owner of this crontab cannot read them back.
+	if [ "$USER_MODE" != 1 ] && command -v logger >/dev/null 2>&1; then
 		redirect="2>&1 | logger -t $__ID"
 	else
 		redirect=">>$LOG_FILE 2>&1"
 	fi
-	cron_line="*/$INTERVAL_MIN * * * * $INSTALL_PATH run $redirect"
+	# Invoked through sh rather than directly: cron does not necessarily run as
+	# the user that installed the entry, and the exec bit may not carry over.
+	cron_line="*/$INTERVAL_MIN * * * * sh $INSTALL_PATH run $redirect"
 
 	if command -v crontab >/dev/null 2>&1; then
 		tmp=$(mktemp)
@@ -624,8 +628,11 @@ trim_log() {
 	[ -f "$LOG_FILE" ] || return 0
 	size=$(wc -c <"$LOG_FILE" 2>/dev/null || echo 0)
 	[ "$size" -gt "$LOG_MAX_BYTES" ] || return 0
+	# Truncated in place, not replaced: cron is appending to this file through an
+	# already-open descriptor, which a new inode would leave writing to nothing.
 	tail -c $((LOG_MAX_BYTES / 2)) "$LOG_FILE" >"$LOG_FILE.tmp" 2>/dev/null &&
-		mv -f "$LOG_FILE.tmp" "$LOG_FILE"
+		cat "$LOG_FILE.tmp" >"$LOG_FILE"
+	rm -f "$LOG_FILE.tmp"
 }
 
 # ---------------------------------------------------------------------------
