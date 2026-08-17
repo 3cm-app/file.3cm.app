@@ -13,13 +13,15 @@
 # A request only ever reveals the one address it came from, so IP_FAMILY decides
 # which address the controller registers, and with it which check suits the host:
 #
-#   IP_FAMILY=4      (default) always go out over IPv4 -> pair with the ipv4 check
-#   IP_FAMILY=6      always over IPv6                  -> pair with the ipv6 check
-#   IP_FAMILY=auto   whichever route the system picks. For a dual-stack host,
-#                    pair with the ip check and bind the second address by hand:
-#                      worker-admin.sh bind <ref> <the other address>
-#                    Pinning a single family on such a host breaks the day
-#                    routing prefers the other one.
+#   IP_FAMILY=4      (default) always go out over IPv4, so that is the address
+#                    the controller registers
+#   IP_FAMILY=6      always over IPv6
+#   IP_FAMILY=auto   whichever route the system picks
+#
+# The controller's ip check accepts either family, but only against an address
+# it has for that family. On a dual-stack host, bind the second one by hand:
+#   worker-admin.sh bind <ref> <the other address>
+# Otherwise the day routing prefers the other family, the host is refused.
 #
 # Settings, highest priority first:
 #   1. environment variable
