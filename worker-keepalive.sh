@@ -409,13 +409,14 @@ machine_body() {
 post_json() {
 	path=$1
 	body=$2
+	RESP_URL=$API_BASE$path
 	resp=$(mktemp)
 	TMP_FILES="$TMP_FILES $resp"
 
 	RESP_CODE=$(printf '%s' "$body" | curl -sS \
 		-o "$resp" -w '%{http_code}' \
 		--max-time "$HTTP_TIMEOUT" --retry 2 --retry-delay 5 \
-		-X POST "$API_BASE$path" \
+		-X POST "$RESP_URL" \
 		-H 'Content-Type: application/json' \
 		--data-binary @- 2>/dev/null) || RESP_CODE=000
 
@@ -437,20 +438,20 @@ enroll() {
 		log WARN "approve it on the controller, then this agent will start reporting"
 		;;
 	403)
-		log ERROR "enrollment refused: $RESP_BODY"
+		log ERROR "enrollment refused by $RESP_URL: $RESP_BODY"
 		log ERROR "open the enrollment window on the controller and re-run '$0 install'"
 		return 1
 		;;
 	429)
-		log ERROR "enrollment rate limited or too many pending machines: $RESP_BODY"
+		log ERROR "enrollment rate limited by $RESP_URL: $RESP_BODY"
 		return 1
 		;;
 	000)
-		log ERROR "enrollment failed: cannot reach $API_BASE$ENROLL_PATH"
+		log ERROR "enrollment failed: cannot reach $RESP_URL"
 		return 1
 		;;
 	*)
-		log ERROR "enrollment failed: HTTP $RESP_CODE -- $RESP_BODY"
+		log ERROR "enrollment failed: $RESP_URL returned HTTP $RESP_CODE -- $RESP_BODY"
 		return 1
 		;;
 	esac
@@ -465,7 +466,7 @@ heartbeat() {
 		log INFO "heartbeat ok (machine_id=$machine_id)"
 		;;
 	403)
-		log ERROR "heartbeat refused: $RESP_BODY"
+		log ERROR "heartbeat refused by $RESP_URL: $RESP_BODY"
 		log ERROR "check this machine on the controller (approval status, pinned ip, checks)"
 		return 1
 		;;
@@ -474,11 +475,11 @@ heartbeat() {
 		return 1
 		;;
 	000)
-		log ERROR "heartbeat failed: cannot reach $API_BASE$SYNC_PATH"
+		log ERROR "heartbeat failed: cannot reach $RESP_URL"
 		return 1
 		;;
 	*)
-		log ERROR "heartbeat failed: HTTP $RESP_CODE -- $RESP_BODY"
+		log ERROR "heartbeat failed: $RESP_URL returned HTTP $RESP_CODE -- $RESP_BODY"
 		return 1
 		;;
 	esac
