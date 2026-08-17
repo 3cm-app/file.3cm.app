@@ -56,6 +56,7 @@ read_config() {
 	while IFS="$(printf '\t')" read -r k v; do
 		case "$k" in
 		api_base) [ -n "${API_BASE:-}" ] || API_BASE=$v ;;
+		machine_id) [ -n "${MACHINE_ID:-}" ] || MACHINE_ID=$v ;;
 		machine_token) [ -n "${MACHINE_TOKEN:-}" ] || MACHINE_TOKEN=$v ;;
 		enroll_path) [ -n "${ENROLL_PATH:-}" ] || ENROLL_PATH=$v ;;
 		sync_path) [ -n "${SYNC_PATH:-}" ] || SYNC_PATH=$v ;;
@@ -85,6 +86,7 @@ read_config
 : "${API_BASE:=https://api.3cm.app}"
 : "${ENROLL_PATH:=/v1/worker/enroll}"
 : "${SYNC_PATH:=/v1/worker/sync}"
+: "${MACHINE_ID:=}"
 : "${MACHINE_TOKEN:=}"
 
 # --- paths ------------------------------------------------------------------
@@ -290,7 +292,9 @@ generate_machine_token() {
 # Identifies a host, does not authenticate it. VMs cloned from one image share
 # /etc/machine-id; change it on the clone or they overwrite each other.
 detect_machine_id() {
-	if [ -s /etc/machine-id ]; then
+	if [ -n "$MACHINE_ID" ]; then
+		printf '%s' "$MACHINE_ID"
+	elif [ -s /etc/machine-id ]; then
 		cat /etc/machine-id
 	elif [ -s /var/lib/dbus/machine-id ]; then
 		cat /var/lib/dbus/machine-id
@@ -663,8 +667,9 @@ cmd_install() {
 		log INFO "generated a machine token for this host"
 	fi
 
-	jq -n --arg api_base "$API_BASE" --arg machine_token "$MACHINE_TOKEN" \
-		'{api_base: $api_base, machine_token: $machine_token}' >"$CONFIG_FILE"
+	jq -n --arg api_base "$API_BASE" --arg machine_token "$MACHINE_TOKEN" --arg machine_id "$MACHINE_ID" \
+		'{api_base: $api_base, machine_token: $machine_token}
+		 + (if $machine_id == "" then {} else {machine_id: $machine_id} end)' >"$CONFIG_FILE"
 	chmod 600 "$CONFIG_FILE"
 	log INFO "config written to $CONFIG_FILE"
 
