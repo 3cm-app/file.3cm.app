@@ -10,18 +10,9 @@
 #   echo "<sha256>  /tmp/wk.sh" | sha256sum -c - || exit 1
 #   CA_PUBKEY="ssh-ed25519 AAAA... worker-ca" sh /tmp/wk.sh install
 #
-# A request only ever reveals the one address it came from, so IP_FAMILY decides
-# which address the controller registers, and with it which check suits the host:
-#
-#   IP_FAMILY=4      (default) always go out over IPv4, so that is the address
-#                    the controller registers
-#   IP_FAMILY=6      always over IPv6
-#   IP_FAMILY=auto   whichever route the system picks
-#
-# The controller's ip check accepts either family, but only against an address
-# it has for that family. On a dual-stack host, bind the second one by hand:
-#   worker-admin.sh bind <ref> <the other address>
-# Otherwise the day routing prefers the other family, the host is refused.
+# The controller registers whichever address it observes the request arriving
+# from. On a dual-stack host that is only one of the two, so bind the other by
+# hand once: worker-admin.sh bind <ref> <the other address>
 #
 # Settings, highest priority first:
 #   1. environment variable
@@ -67,7 +58,6 @@ read_config() {
 		log_max_bytes) [ -n "${LOG_MAX_BYTES:-}" ] || LOG_MAX_BYTES=$v ;;
 		http_timeout) [ -n "${HTTP_TIMEOUT:-}" ] || HTTP_TIMEOUT=$v ;;
 		install_deps) [ -n "${INSTALL_DEPS:-}" ] || INSTALL_DEPS=$v ;;
-		ip_family) [ -n "${IP_FAMILY:-}" ] || IP_FAMILY=$v ;;
 		esac
 	done <<EOF
 $(jq -r 'to_entries[] | select(.value != null) | "\(.key)\t\(.value)"' "$CONFIG_FILE" 2>/dev/null)
@@ -98,9 +88,6 @@ read_config
 : "${LOG_MAX_BYTES:=1048576}"
 : "${HTTP_TIMEOUT:=30}"
 : "${INSTALL_DEPS:=1}"
-# 4, 6 or auto (whatever the system picks). Fixing it keeps the address the
-# controller sees stable, which is what an ipv4 or ipv6 check compares against.
-: "${IP_FAMILY:=4}"
 
 TMP_FILES=''
 cleanup() {
@@ -426,17 +413,11 @@ machine_body() {
 post_json() {
 	path=$1
 	body=$2
-	case "${3:-$IP_FAMILY}" in
-	4) family_opt=-4 ;;
-	6) family_opt=-6 ;;
-	*) family_opt='' ;;
-	esac
 	RESP_URL=$API_BASE$path
 	resp=$(mktemp)
 	TMP_FILES="$TMP_FILES $resp"
 
-	# shellcheck disable=SC2086  # a single flag or empty; must not become ''
-	RESP_CODE=$(printf '%s' "$body" | curl -sS $family_opt \
+	RESP_CODE=$(printf '%s' "$body" | curl -sS \
 		-o "$resp" -w '%{http_code}' \
 		--max-time "$HTTP_TIMEOUT" --retry 2 --retry-delay 5 \
 		-X POST "$RESP_URL" \
@@ -661,7 +642,6 @@ cmd_status() {
 	printf 'version:        %s\n' "$__VERSION"
 	printf 'config:         %s\n' "$([ -r "$CONFIG_FILE" ] && echo "$CONFIG_FILE" || echo MISSING)"
 	printf 'api base:       %s\n' "$API_BASE"
-	printf 'ip family:      %s\n' "$IP_FAMILY"
 	printf 'machine token:  %s\n' "$([ -n "$MACHINE_TOKEN" ] && echo 'set (hidden)' || echo unset)"
 	printf 'machine_id:     %s\n' "$(detect_machine_id 2>/dev/null || echo unknown)"
 	printf 'ca pub:         %s\n' "$([ -f "$CA_PUB" ] && echo "$CA_PUB" || echo MISSING)"
